@@ -15,29 +15,35 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(bodyParser.json());
 
-app.post('/api/request', (req, res) => {
+app.post('/api/request', async (req, res) => {
   const { message } = req.body;
 
-  console.log('Received request:', message);
+  try {
+    const aiResponse = await openai.createChatCompletion({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: 'You are a helpful assistant that extracts search terms from a user\'s message for local classified listings.' },
+        { role: 'user', content: message }
+      ]
+    });
 
-  const mockResults = [
-    {
-      title: 'Free Dirt - Clean Fill',
-      description: 'Local listing on Kijiji - pickup available 2km away.',
-    },
-    {
-      title: 'Sod Rolls - $3 each',
-      description: 'Facebook Marketplace deal nearby, pickup only.',
-    },
-    {
-      title: 'Landscaper for Hire',
-      description: 'Highly rated Google listing offering dump trailer delivery.',
-    },
-  ];
+    const keywords = aiResponse.data.choices[0].message.content;
 
-  res.json({ results: mockResults });
-});
+    // Log the AI interpretation
+    console.log('Extracted keywords or task:', keywords);
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+    // Fake results using keywords (replace with real scraping later)
+    const mockResults = [
+      {
+        title: `Search result: ${keywords}`,
+        description: `Matched listing based on your input.`,
+      },
+    ];
+
+    res.json({ results: mockResults });
+
+  } catch (error) {
+    console.error('OpenAI error:', error.message);
+    res.status(500).json({ error: 'Something went wrong with AI response' });
+  }
 });
