@@ -48,7 +48,7 @@ app.post('/api/request', async (req, res) => {
     console.log('🔍 Using search term:', searchTerm);
 
     // Step 2: Query Kijiji RSS feed
-    const rssUrl = `https://www.kijiji.ca/rss-srp-buy-sell/calgary/${searchTerm}/k0l1700199`;
+    const rssUrl = `https://calgary.craigslist.org/search/sss?format=rss&query=${searchTerm}`;
     const feed = await parser.parseURL(rssUrl);
 
     const results = feed.items.slice(0, 5).map(item => ({
