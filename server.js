@@ -5,28 +5,27 @@ const OpenAI = require('openai');
 const Parser = require('rss-parser');
 
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT; // ✅ Use Render's dynamic port!
 
 app.use(cors());
 app.use(bodyParser.json());
 
-// Set up OpenAI
+// OpenAI setup
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Set up RSS parser
+// RSS Parser
 const parser = new Parser();
 
-// Your ScraperAPI key
+// ScraperAPI key (securely stored in Render environment)
 const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY;
 
-// API endpoint
 app.post('/api/request', async (req, res) => {
   const { message } = req.body;
 
   try {
-    // Step 1: Extract keywords using OpenAI
+    // Step 1: Extract keywords from user input
     const aiResponse = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
@@ -44,11 +43,11 @@ app.post('/api/request', async (req, res) => {
     let keywords = aiResponse.choices[0].message.content.trim();
     console.log('✅ AI extracted keywords:', keywords);
 
-    keywords = keywords.replace(/^.*?(?=\b[a-z])/i, ''); // clean prefixes
+    // Use the first keyword for now
     const searchTerm = encodeURIComponent(keywords.split(',')[0].trim());
     console.log('🔍 Using search term:', searchTerm);
 
-    // Step 2: Use ScraperAPI to fetch Craigslist RSS
+    // Step 2: Fetch Craigslist RSS using ScraperAPI
     const targetUrl = `https://calgary.craigslist.org/search/sss?format=rss&query=${searchTerm}`;
     const rssUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}`;
 
@@ -69,13 +68,6 @@ app.post('/api/request', async (req, res) => {
   }
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
-
