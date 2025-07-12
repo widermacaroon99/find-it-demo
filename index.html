@@ -128,7 +128,7 @@
 
     const message = document.querySelector('textarea').value;
 
-    const response = await fetch(https://find-it-demo.onrender.com/, {
+    const response = await fetch('https://find-it-demo.onrender.com/api/request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message }),
