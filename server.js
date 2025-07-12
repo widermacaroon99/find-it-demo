@@ -19,18 +19,18 @@ const openai = new OpenAI({
 // RSS Parser
 const parser = new Parser();
 
-// Endpoint
+// Route
 app.post('/api/request', async (req, res) => {
   const { message } = req.body;
 
   try {
-    // Step 1: Extract keywords from user input
+    // Step 1: Use OpenAI to extract keywords
     const aiResponse = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         {
           role: 'system',
-          content: 'Extract simple search terms from user requests for local classifieds. Return 2–3 short comma-separated keywords only.',
+          content: 'Extract simple search terms from user requests for items or services. Return 2-3 short, comma-separated keywords.',
         },
         {
           role: 'user',
@@ -42,12 +42,12 @@ app.post('/api/request', async (req, res) => {
     let keywords = aiResponse.choices[0].message.content.trim();
     console.log('✅ AI extracted keywords:', keywords);
 
-    // Sanitize and extract first keyword
-    keywords = keywords.replace(/^.*?(?=\b[a-z])/i, ''); // remove prefix
+    // Clean and use first keyword
+    keywords = keywords.replace(/^.*?(?=\b[a-z])/i, ''); // Remove prefixes
     const searchTerm = encodeURIComponent(keywords.split(',')[0].trim());
     console.log('🔍 Using search term:', searchTerm);
 
-    // Step 2: Query Kijiji RSS feed
+    // Step 2: Fetch from Craigslist RSS
     const rssUrl = `https://calgary.craigslist.org/search/sss?format=rss&query=${searchTerm}`;
     const feed = await parser.parseURL(rssUrl);
 
@@ -57,7 +57,7 @@ app.post('/api/request', async (req, res) => {
       link: item.link
     }));
 
-    console.log(`✅ Found ${results.length} RSS listings for "${searchTerm}"`);
+    console.log(`✅ Found ${results.length} Craigslist listings for "${searchTerm}"`);
     res.json({ results });
 
   } catch (error) {
