@@ -1,18 +1,18 @@
 {
   "name": "find-it-backend",
   "version": "1.0.0",
-  "description": "Backend for Find It For Me app",
+  "description": "Backend service for Find-It app using OpenAI and Kijiji RSS",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-  "axios": "^1.6.8",
-  "body-parser": "^1.20.2",
-  "cheerio": "^1.0.0-rc.12",
-  "cors": "^2.8.5",
-  "express": "^4.18.2",
-  "openai": "^4.20.0",
-  "rss-parser": "^3.12.0"
-}
+    "axios": "^1.6.8",
+    "body-parser": "^1.20.2",
+    "cheerio": "^1.0.0-rc.12",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "openai": "^4.20.0",
+    "rss-parser": "^3.12.0"
+  }
 }
