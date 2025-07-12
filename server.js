@@ -37,7 +37,13 @@ app.post('/api/request', async (req, res) => {
       ],
     });
 
-    const keywords = aiResponse.choices[0].message.content.trim();
+    let keywords = aiResponse.choices[0].message.content.trim();
+
+// Remove prefixes like "Keywords: " or "Extracted keywords:"
+keywords = keywords.replace(/^.*?(dirt|sod|gravel|topsoil|mulch|landscaping)/i, (match, firstKeyword) => {
+  const rest = match.slice(match.indexOf(firstKeyword));
+  return rest;
+});
     console.log('AI extracted keywords:', keywords);
 
     // Step 2: Use first keyword for Kijiji scraping
