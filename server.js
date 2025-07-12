@@ -1,42 +1,52 @@
-const { Configuration, OpenAIApi } = require("openai");
-
-const openai = new OpenAIApi(
-  new Configuration({
-    apiKey: process.env.OPENAI_API_KEY,
-  })
-);
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const OpenAI = require('openai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
+// OpenAI Setup
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// POST endpoint
 app.post('/api/request', async (req, res) => {
   const { message } = req.body;
 
   try {
-    const aiResponse = await openai.createChatCompletion({
+    // Ask OpenAI to extract useful search keywords
+    const aiResponse = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
-        { role: 'system', content: 'You are a helpful assistant that extracts search terms from a user\'s message for local classified listings.' },
-        { role: 'user', content: message }
-      ]
+        {
+          role: 'system',
+          content: 'You are a helpful assistant that extracts search keywords or item categories from a user\'s message for local classifieds (e.g., Kijiji, Craigslist, etc). Reply with short search terms only.',
+        },
+        {
+          role: 'user',
+          content: message,
+        },
+      ],
     });
 
-    const keywords = aiResponse.data.choices[0].message.content;
+    const keywords = aiResponse.choices[0].message.content;
+    console.log('AI extracted keywords:', keywords);
 
-    // Log the AI interpretation
-    console.log('Extracted keywords or task:', keywords);
-
-    // Fake results using keywords (replace with real scraping later)
+    // Return mock search results
     const mockResults = [
       {
-        title: `Search result: ${keywords}`,
-        description: `Matched listing based on your input.`,
+        title: `Search term suggestion: ${keywords}`,
+        description: `These are suggested terms you can use to search local listings.`,
+      },
+      {
+        title: 'Coming Soon: Real listings',
+        description: 'We’ll soon fetch live results from Kijiji and other marketplaces based on these keywords!',
       },
     ];
 
@@ -44,6 +54,11 @@ app.post('/api/request', async (req, res) => {
 
   } catch (error) {
     console.error('OpenAI error:', error.message);
-    res.status(500).json({ error: 'Something went wrong with AI response' });
+    res.status(500).json({ error: 'AI failed to respond. Try again.' });
   }
 });
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+})
