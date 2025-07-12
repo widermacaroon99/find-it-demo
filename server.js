@@ -4,8 +4,7 @@ const bodyParser = require('body-parser');
 const OpenAI = require('openai');
 const axios = require('axios');
 const cheerio = require('cheerio');
-console.log('✅ Loaded Kijiji HTML. Looking for .search-item nodes...');
-console.log('Preview of HTML:', $.html().slice(0, 300)); // Log the first 300 chars of the HTML
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -54,7 +53,8 @@ keywords = keywords.replace(/^.*?(dirt|sod|gravel|topsoil|mulch|landscaping)/i, 
 
     const response = await axios.get(searchUrl);
     const $ = cheerio.load(response.data);
-
+console.log('✅ Loaded Kijiji HTML. Looking for .search-item nodes...');
+console.log('Preview of HTML:', $.html().slice(0, 300)); // Log the first 300 chars of the HTML
     const results = [];
 
     $('.search-item').each((i, el) => {
