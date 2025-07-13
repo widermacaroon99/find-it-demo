@@ -2,62 +2,68 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
+const bodyParser = require("body-parser");
+const { OpenAI } = require("openai");
 const Parser = require("rss-parser");
-const OpenAI = require("openai");
 
 const app = express();
 const port = process.env.PORT || 10000;
 const parser = new Parser();
 
+app.use(cors());
+app.use(bodyParser.json());
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-app.use(cors());
-app.use(express.json());
-
 app.post("/api/search", async (req, res) => {
-  const { userPrompt } = req.body;
+  const userInput = req.body.message;
 
   try {
-    const chatResponse = await openai.chat.completions.create({
+    console.log("User input:", userInput);
+
+    const chatCompletion = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
         {
           role: "system",
-          content: "Extract 2-4 keywords from the user's request. Return a short comma-separated list only.",
+          content: "Extract 2 to 3 concise keywords from the user's request that can be used in a classified ad search.",
         },
         {
           role: "user",
-          content: userPrompt,
+          content: userInput,
         },
       ],
     });
 
-    const keywordResponse = chatResponse.choices[0].message.content;
-    console.log("Extracted keywords:", keywordResponse);
+    const keywordResponse = chatCompletion.choices[0].message.content;
+    console.log("AI extracted keywords:", keywordResponse);
 
-    const keywords = keywordResponse.split(",").map(k => k.trim());
-    const searchTerm = encodeURIComponent(keywords[0]);
-    console.log("Using search term:", searchTerm);
+    const keywords = encodeURIComponent(keywordResponse.split(",")[0].trim());
+    const city = "calgary";
+    const craigslistURL = `https://${city}.craigslist.org/search/sss?format=rss&query=${keywords}`;
 
-    const rssUrl = `https://calgary.craigslist.org/search/sss?format=rss&query=${searchTerm}`;
-    const apiUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&premium=true&url=${encodeURIComponent(rssUrl)}`;
-    console.log("Fetching RSS feed from:", apiUrl);
+    const response = await axios.get(`http://api.scraperapi.com`, {
+      params: {
+        api_key: process.env.SCRAPER_API_KEY,
+        url: craigslistURL,
+        premium: true,
+      },
+    });
 
-    const response = await axios.get(apiUrl);
     const feed = await parser.parseString(response.data);
 
-    const results = feed.items.map(item => ({
+    const items = feed.items.map((item) => ({
       title: item.title,
       link: item.link,
       pubDate: item.pubDate,
     }));
 
-    res.json({ keywords: keywordResponse, results });
+    res.json({ listings: items });
   } catch (error) {
-    console.error("Error during search:", error);
-    res.status(500).json({ error: "Internal server error", details: error.message });
+    console.error("Error:", error.message || error);
+    res.status(500).json({ error: "Something went wrong while processing your request." });
   }
 });
 
