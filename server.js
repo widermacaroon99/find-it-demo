@@ -17,7 +17,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-app.post("/api/search", async (req, res) => {
+app.post("/api/request", async (req, res) => {
   const userInput = req.body.message;
 
   try {
@@ -44,7 +44,7 @@ app.post("/api/search", async (req, res) => {
     const city = "calgary";
     const craigslistURL = `https://${city}.craigslist.org/search/sss?format=rss&query=${keywords}`;
 
-    const response = await axios.get(`http://api.scraperapi.com`, {
+    const response = await axios.get("http://api.scraperapi.com", {
       params: {
         api_key: process.env.SCRAPER_API_KEY,
         url: craigslistURL,
