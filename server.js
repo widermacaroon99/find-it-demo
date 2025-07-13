@@ -1,82 +1,72 @@
 const express = require('express');
-const cors = require('cors');
 const bodyParser = require('body-parser');
-const OpenAI = require('openai');
-const Parser = require('rss-parser');
-const axios = require('axios'); // ✅ For safer RSS fetching
+const cors = require('cors');
+const axios = require('axios');
+require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 10000;
+
+const { OpenAI } = require('openai');
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 app.use(cors());
 app.use(bodyParser.json());
-
-// ✅ OpenAI setup
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// ✅ RSS and API keys
-const parser = new Parser();
-const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY;
 
 app.post('/api/request', async (req, res) => {
   const { message } = req.body;
 
   try {
-    // 🔍 Extract keywords using OpenAI
+    // Step 1: Extract keywords using OpenAI
     const aiResponse = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         {
           role: 'system',
-          content: 'Extract simple search terms from user requests for items or services. Return 2-3 short, comma-separated keywords.',
+          content: 'Extract simple search terms from user requests for items or services. Return 2-3 short, comma-separated keywords.'
         },
         {
           role: 'user',
-          content: message,
-        },
-      ],
+          content: message
+        }
+      ]
     });
 
-    const keywords = aiResponse.choices[0].message.content.trim();
+    let keywords = aiResponse.choices[0].message.content.trim();
     console.log('✅ AI extracted keywords:', keywords);
 
     const searchTerm = encodeURIComponent(keywords.split(',')[0].trim());
     console.log('🔍 Using search term:', searchTerm);
 
-    // 🌐 Build and call ScraperAPI RSS URL
-    const targetUrl = `https://calgary.craigslist.org/search/sss?format=rss&query=${searchTerm}`;
-    const rssUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}`;
+    // Step 2: Use Apify Craigslist scraper (RealScraper-style integration)
+    const apifyToken = process.env.APIFY_API_TOKEN;
+    const runUrl = `https://api.apify.com/v2/acts/ivanvs~craigslist-scraper-pay-per-result/run-sync-get-dataset-items?token=${apifyToken}`;
+    const body = {
+      urls: [`https://calgary.craigslist.org/search/sss?query=${searchTerm}`],
+      proxyConfiguration: { useApifyProxy: true }
+    };
 
-    console.log('🔗 Fetching RSS feed via ScraperAPI:', rssUrl);
+    const apifyResp = await axios.post(runUrl, body, {
+      headers: { 'Content-Type': 'application/json' }
+    });
 
-    // 🛡️ Fetch and validate response before parsing
-    const response = await axios.get(rssUrl);
-
-    if (response.status !== 200 || !response.data.includes('<?xml')) {
-      throw new Error(`Unexpected response from ScraperAPI. Status: ${response.status}`);
-    }
-
-    // 📥 Parse valid XML feed
-    const feed = await parser.parseString(response.data);
-
-    const results = feed.items.slice(0, 5).map(item => ({
+    const items = apifyResp.data;
+    const results = items.slice(0, 5).map(item => ({
       title: item.title,
-      description: item.contentSnippet,
-      link: item.link,
+      description: item.price ? `${item.price} • ${item.location}` : item.location,
+      link: item.url
     }));
 
-    console.log(`✅ Found ${results.length} listings for "${searchTerm}"`);
+    console.log(`✅ Apify returned ${results.length} listings`);
     res.json({ results });
 
   } catch (error) {
     console.error('❌ FULL ERROR:', error);
-    res.status(500).json({ error: 'Scraping failed.', details: error.message });
+    res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 });
 
-// 🚀 Launch server using Render's provided port
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
