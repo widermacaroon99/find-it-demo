@@ -1,72 +1,63 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const cors = require('cors');
+const bodyParser = require('body-parser');
+const OpenAI = require('openai');
+const Parser = require('rss-parser');
 const axios = require('axios');
-require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-const { OpenAI } = require('openai');
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 app.use(cors());
 app.use(bodyParser.json());
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const parser = new Parser();
+const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY;
 
 app.post('/api/request', async (req, res) => {
   const { message } = req.body;
 
   try {
-    // Step 1: Extract keywords using OpenAI
-    const aiResponse = await openai.chat.completions.create({
+    const aiRes = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
-        {
-          role: 'system',
-          content: 'Extract simple search terms from user requests for items or services. Return 2-3 short, comma-separated keywords.'
-        },
-        {
-          role: 'user',
-          content: message
-        }
-      ]
+        { role: 'system', content: 'Extract 2‑3 short comma‑separated search keywords.' },
+        { role: 'user', content: message }
+      ],
     });
 
-    let keywords = aiResponse.choices[0].message.content.trim();
+    const keywords = aiRes.choices[0].message.content.trim();
     console.log('✅ AI extracted keywords:', keywords);
 
-    const searchTerm = encodeURIComponent(keywords.split(',')[0].trim());
-    console.log('🔍 Using search term:', searchTerm);
+    const term = encodeURIComponent(keywords.split(',')[0].trim());
+    console.log('🔍 Using search term:', term);
 
-    // Step 2: Use Apify Craigslist scraper (RealScraper-style integration)
-    const apifyToken = process.env.APIFY_API_TOKEN;
-    const runUrl = `https://api.apify.com/v2/acts/ivanvs~craigslist-scraper-pay-per-result/run-sync-get-dataset-items?token=${apifyToken}`;
-    const body = {
-      urls: [`https://calgary.craigslist.org/search/sss?query=${searchTerm}`],
-      proxyConfiguration: { useApifyProxy: true }
-    };
+    const target = `https://calgary.craigslist.org/search/sss?format=rss&query=${term}`;
+    const rssUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&premium=true&url=${encodeURIComponent(target)}`;
+    console.log('🔗 Fetching RSS feed via ScraperAPI:', rssUrl);
 
-    const apifyResp = await axios.post(runUrl, body, {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const response = await axios.get(rssUrl);
+    if (response.status !== 200 || !response.data.includes('<?xml')) {
+      throw new Error(`Bad ScraperAPI response (status ${response.status})`);
+    }
 
-    const items = apifyResp.data;
-    const results = items.slice(0, 5).map(item => ({
+    const feed = await parser.parseString(response.data);
+    const results = feed.items.slice(0, 5).map(item => ({
       title: item.title,
-      description: item.price ? `${item.price} • ${item.location}` : item.location,
-      link: item.url
+      description: item.contentSnippet,
+      link: item.link
     }));
 
-    console.log(`✅ Apify returned ${results.length} listings`);
+    console.log(`✅ Found ${results.length} Craigslist listings.`);
     res.json({ results });
 
-  } catch (error) {
-    console.error('❌ FULL ERROR:', error);
-    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+  } catch (err) {
+    console.error('❌ FULL ERROR:', err);
+    res.status(500).json({ error: 'Scraping failed', details: err.message });
   }
 });
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
-
