@@ -1,62 +1,93 @@
 const express = require('express');
-const cors = require('cors');
 const bodyParser = require('body-parser');
-const OpenAI = require('openai');
-const Parser = require('rss-parser');
 const axios = require('axios');
+const RSSParser = require('rss-parser');
+const { Configuration, OpenAIApi } = require('openai');
+require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const port = process.env.PORT || 10000;
 
-app.use(cors());
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
+
+const parser = new RSSParser();
+
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const parser = new Parser();
-const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY;
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+});
 
 app.post('/api/request', async (req, res) => {
-  const { message } = req.body;
+  const userPrompt = req.body.prompt;
+  console.log('🧠 User Prompt:', userPrompt);
 
   try {
-    const aiRes = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+    const aiResponse = await openai.createChatCompletion({
+      model: 'gpt-4',
       messages: [
-        { role: 'system', content: 'Extract 2‑3 short comma‑separated search keywords.' },
-        { role: 'user', content: message }
+        {
+          role: 'system',
+          content: 'Extract 2-5 keyword search terms that would be useful for searching local buy/sell sites. No explanation needed.',
+        },
+        {
+          role: 'user',
+          content: userPrompt,
+        },
       ],
     });
 
-    const keywords = aiRes.choices[0].message.content.trim();
+    const keywords = aiResponse.data.choices[0].message.content.trim();
     console.log('✅ AI extracted keywords:', keywords);
 
-    const term = encodeURIComponent(keywords.split(',')[0].trim());
-    console.log('🔍 Using search term:', term);
+    const searchTerm = encodeURIComponent(keywords.split(',')[0].trim());
+    console.log('🔍 Using search term:', searchTerm);
 
-    const target = `https://calgary.craigslist.org/search/sss?format=rss&query=${term}`;
-    const rssUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&premium=true&url=${encodeURIComponent(target)}`;
-    console.log('🔗 Fetching RSS feed via ScraperAPI:', rssUrl);
+    const scraperApiKey = process.env.SCRAPER_API_KEY;
+    const craigslistUrl = `https://calgary.craigslist.org/search/sss?format=rss&query=${searchTerm}`;
+    const scraperUrl = `https://api.scraperapi.com?api_key=${scraperApiKey}&premium=true&url=${encodeURIComponent(craigslistUrl)}`;
 
-    const response = await axios.get(rssUrl);
-    if (response.status !== 200 || !response.data.includes('<?xml')) {
-      throw new Error(`Bad ScraperAPI response (status ${response.status})`);
+    let feed;
+    try {
+      const response = await axios.get(scraperUrl);
+      feed = await parser.parseString(response.data);
+    } catch (error) {
+      console.error('⚠️ Premium failed, trying ultra_premium');
+      const fallbackUrl = `https://api.scraperapi.com?api_key=${scraperApiKey}&ultra_premium=true&url=${encodeURIComponent(craigslistUrl)}`;
+      try {
+        const response = await axios.get(fallbackUrl);
+        feed = await parser.parseString(response.data);
+      } catch (err) {
+        console.error('❌ FULL ERROR:', err);
+        return res.status(500).json({ error: 'Failed to fetch or parse RSS feed.' });
+      }
     }
 
-    const feed = await parser.parseString(response.data);
-    const results = feed.items.slice(0, 5).map(item => ({
+    const listings = feed.items.map(item => ({
       title: item.title,
-      description: item.contentSnippet,
-      link: item.link
+      link: item.link,
+      pubDate: item.pubDate
     }));
 
-    console.log(`✅ Found ${results.length} Craigslist listings.`);
-    res.json({ results });
-
+    console.log(`✅ Found ${listings.length} listings for: ${searchTerm}`);
+    res.json({ listings });
   } catch (err) {
-    console.error('❌ FULL ERROR:', err);
-    res.status(500).json({ error: 'Scraping failed', details: err.message });
+    console.error('❌ AI Error:', err);
+    res.status(500).json({ error: 'Something went wrong processing your request.' });
   }
 });
+
+app.listen(port, () => {
+  console.log(`🚀 Server running on port ${port}`);
+});
+
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
