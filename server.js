@@ -1,94 +1,98 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const axios = require('axios');
-const RSSParser = require('rss-parser');
-const { Configuration, OpenAIApi } = require('openai');
-require('dotenv').config();
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const axios = require("axios");
+const Parser = require("rss-parser");
+const OpenAI = require("openai");
 
 const app = express();
 const port = process.env.PORT || 10000;
+const parser = new Parser();
 
-const configuration = new Configuration({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-const openai = new OpenAIApi(configuration);
 
-const parser = new RSSParser();
+app.use(cors());
+app.use(express.json());
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  next();
-});
-
-app.post('/api/request', async (req, res) => {
-  const userPrompt = req.body.prompt;
-  console.log('🧠 User Prompt:', userPrompt);
+app.post("/api/search", async (req, res) => {
+  const { userPrompt } = req.body;
 
   try {
-    const aiResponse = await openai.createChatCompletion({
-      model: 'gpt-4',
+    // Extract keywords using OpenAI
+    const chatResponse = await openai.chat.completions.create({
+      model: "gpt-4",
       messages: [
         {
-          role: 'system',
-          content: 'Extract 2-5 keyword search terms that would be useful for searching local buy/sell sites. No explanation needed.',
+          role: "system",
+          content: "Extract 2-4 keywords from the user's request. Return a short comma-separated list only.",
         },
         {
-          role: 'user',
+          role: "user",
           content: userPrompt,
         },
       ],
     });
 
-    const keywords = aiResponse.data.choices[0].message.content.trim();
-    console.log('✅ AI extracted keywords:', keywords);
+    const keywordResponse = chatResponse.choices[0].message.content;
+    console.log("✅ AI extracted keywords:", keywordResponse);
 
-    const searchTerm = encodeURIComponent(keywords.split(',')[0].trim());
-    console.log('🔍 Using search term:', searchTerm);
+    // Use first keyword for simplicity
+    const keywords = keywordResponse.split(",").map(k => k.trim());
+    const searchTerm = encodeURIComponent(keywords[0]);
+    console.log("🔍 Using search term:", searchTerm);
 
-    const scraperApiKey = process.env.SCRAPER_API_KEY;
-    const craigslistUrl = `https://calgary.craigslist.org/search/sss?format=rss&query=${searchTerm}`;
-    const scraperUrl = `https://api.scraperapi.com?api_key=${scraperApiKey}&premium=true&url=${encodeURIComponent(craigslistUrl)}`;
+    const rssUrl = `https://calgary.craigslist.org/search/sss?format=rss&query=${searchTerm}`;
+    const apiUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&premium=true&url=${encodeURIComponent(rssUrl)}`;
+    console.log("🔗 Fetching RSS feed via ScraperAPI:", apiUrl);
 
-    let feed;
-    try {
-      const response = await axios.get(scraperUrl);
-      feed = await parser.parseString(response.data);
-    } catch (error) {
-      console.error('⚠️ Premium failed, trying ultra_premium');
-      const fallbackUrl = `https://api.scraperapi.com?api_key=${scraperApiKey}&ultra_premium=true&url=${encodeURIComponent(craigslistUrl)}`;
-      try {
-        const response = await axios.get(fallbackUrl);
-        feed = await parser.parseString(response.data);
-      } catch (err) {
-        console.error('❌ FULL ERROR:', err);
-        return res.status(500).json({ error: 'Failed to fetch or parse RSS feed.' });
-      }
-    }
+    const response = await axios.get(apiUrl);
+    const feed = await parser.parseString(response.data);
 
-    const listings = feed.items.map(item => ({
+    const results = feed.items.map(item => ({
       title: item.title,
       link: item.link,
-      pubDate: item.pubDate
+      pubDate: item.pubDate,
     }));
 
-    console.log(`✅ Found ${listings.length} listings for: ${searchTerm}`);
-    res.json({ listings });
-  } catch (err) {
-    console.error('❌ AI Error:', err);
-    res.status(500).json({ error: 'Something went wrong processing your request.' });
+    res.json({ keywords: keywordResponse, results });
+  } catch (error) {
+    console.error("❌ FULL ERROR:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
 
 app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
 });
+✅ Requirements:
+Add a .env file with:
 
+ini
+Copy
+Edit
+OPENAI_API_KEY=your_openai_key_here
+SCRAPER_API_KEY=your_scraperapi_key_here
+PORT=10000
+Your package.json should include:
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+json
+Copy
+Edit
+{
+  "name": "find-it-backend",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "openai": "^4.20.0",
+    "rss-parser": "^3.12.0"
+  }
+}
