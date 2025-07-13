@@ -17,7 +17,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-app.post("/api/request", async (req, res) => {
+app.post("/api/search", async (req, res) => {
   const userInput = req.body.message;
 
   try {
@@ -40,9 +40,15 @@ app.post("/api/request", async (req, res) => {
     const keywordResponse = chatCompletion.choices[0].message.content;
     console.log("AI extracted keywords:", keywordResponse);
 
-    const keywords = encodeURIComponent(keywordResponse.split(",")[0].trim());
+    const keywordsRaw = keywordResponse
+      .split(",")
+      .map(k => k.trim().toLowerCase())
+      .filter(k => k.length > 0)
+      .join("+");
+
     const city = "calgary";
-    const craigslistURL = `https://${city}.craigslist.org/search/sss?format=rss&query=${keywords}`;
+    const craigslistURL = `https://${city}.craigslist.org/search/sss?format=rss&query=${encodeURIComponent(keywordsRaw)}`;
+    console.log("Fetching from:", craigslistURL);
 
     const response = await axios.get("http://api.scraperapi.com", {
       params: {
@@ -52,17 +58,23 @@ app.post("/api/request", async (req, res) => {
       },
     });
 
-    const feed = await parser.parseString(response.data);
+    console.log("Craigslist RSS raw response (start):", response.data.slice(0, 300));
 
-    const items = feed.items.map((item) => ({
-      title: item.title,
-      link: item.link,
-      pubDate: item.pubDate,
-    }));
+    try {
+      const feed = await parser.parseString(response.data);
+      const items = feed.items.map((item) => ({
+        title: item.title,
+        link: item.link,
+        pubDate: item.pubDate,
+      }));
 
-    res.json({ listings: items });
+      res.json({ listings: items });
+    } catch (rssErr) {
+      console.error("RSS parsing failed:", rssErr.message || rssErr);
+      res.status(500).json({ error: "Failed to parse RSS feed." });
+    }
   } catch (error) {
-    console.error("Error:", error.message || error);
+    console.error("Full error:", error.message || error);
     res.status(500).json({ error: "Something went wrong while processing your request." });
   }
 });
