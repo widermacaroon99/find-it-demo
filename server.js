@@ -40,14 +40,15 @@ app.post("/api/search", async (req, res) => {
     const keywordResponse = chatCompletion.choices[0].message.content;
     console.log("AI extracted keywords:", keywordResponse);
 
-    const keywordsRaw = keywordResponse
+    const cleanedKeywords = keywordResponse
+      .replace(/["']/g, "")
       .split(",")
-      .map(k => k.trim().toLowerCase())
-      .filter(k => k.length > 0)
+      .map((k) => k.trim())
       .join("+");
 
     const city = "calgary";
-    const craigslistURL = `https://${city}.craigslist.org/search/sss?format=rss&query=${encodeURIComponent(keywordsRaw)}`;
+    const craigslistURL = `https://${city}.craigslist.org/search/sss?format=rss&query=${cleanedKeywords}`;
+
     console.log("Fetching from:", craigslistURL);
 
     const response = await axios.get("http://api.scraperapi.com", {
@@ -58,21 +59,15 @@ app.post("/api/search", async (req, res) => {
       },
     });
 
-    console.log("Craigslist RSS raw response (start):", response.data.slice(0, 300));
+    const feed = await parser.parseString(response.data);
+    const items = feed.items.map((item) => ({
+      title: item.title,
+      link: item.link,
+      pubDate: item.pubDate,
+    }));
 
-    try {
-      const feed = await parser.parseString(response.data);
-      const items = feed.items.map((item) => ({
-        title: item.title,
-        link: item.link,
-        pubDate: item.pubDate,
-      }));
-
-      res.json({ listings: items });
-    } catch (rssErr) {
-      console.error("RSS parsing failed:", rssErr.message || rssErr);
-      res.status(500).json({ error: "Failed to parse RSS feed." });
-    }
+    console.log(`Found ${items.length} listings`);
+    res.json({ listings: items });
   } catch (error) {
     console.error("Full error:", error.message || error);
     res.status(500).json({ error: "Something went wrong while processing your request." });
